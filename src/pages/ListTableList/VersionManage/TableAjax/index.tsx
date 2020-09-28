@@ -1,7 +1,9 @@
 import React, { useContext, useState, useEffect, useRef }from "react";
 import styles from "./index.less";
-import {Divider, Table, Input, Button, Popconfirm, Form} from "antd";
+import {Divider, Table, Input, Button, Popconfirm, Form, message, Tooltip  } from "antd";
 import reqwest from "reqwest";
+
+import { Resizable } from 'react-resizable';
 
 const EditableContext = React.createContext<any>();
 
@@ -103,11 +105,45 @@ const EditableCell: React.FC<EditableCellProps> = ({
   return <td {...restProps}>{childNode}</td>;
 };
 
+const ResizableTitle = props => {
+  const { onResize, width, ...restProps } = props;
+
+  if (!width) {
+    return <th {...restProps} />;
+  }
+
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={e => {
+            e.stopPropagation();
+          }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} />
+    </Resizable>
+  );
+};
+
 class MapVersionTable extends React.Component {
 
   constructor(props) {
     super(props);
 
+    this.state = {
+      dataSource: [],
+      pagination: {},
+      loading: false,
+      editingKey: '',
+      count: 0
+    };
     this.columns = [
       {
         title: "地图版本号",
@@ -115,42 +151,81 @@ class MapVersionTable extends React.Component {
         //  key: "mapVersion",
         sorter: true,
         editable: true,
+        width: '10%',
+        ellipsis: true,
+        render: mapVersionId => (
+          <Tooltip placement="topLeft" title={mapVersionId}>
+            {mapVersionId}
+          </Tooltip>
+        ),
         //render: text => <a>{text}</a>
       },
       {
         title: "地图文件目录",
         dataIndex: "mapFilePath",
         editable: true,
+        width: '10%',
+        ellipsis: true,
+        render: mapFilePath => (
+          <Tooltip placement="topLeft" title={mapFilePath}>
+            {mapFilePath}
+          </Tooltip>
+        ),
         //  key: "mapDirectory"
       },
       {
         title: "地图文件名",
         dataIndex: "mapFileName",
         editable: true,
+        width: '10%',
+        ellipsis: true,
+        render: mapFileName => (
+          <Tooltip placement="topLeft" title={mapFileName}>
+            {mapFileName}
+          </Tooltip>
+        ),
         //  key: "address"
       },
       {
         title: "地图文件大小",
         //   key: "mapSize",
         dataIndex: "mapFileSize",
+        width: '5%',
         editable: true,
+        ellipsis: true,
       },
       {
         title: "清单文件目录",
         dataIndex: "manifestFilePath",
         editable: true,
+        width: '10%',
+        ellipsis: true,
+        render: manifestFilePath => (
+          <Tooltip placement="topLeft" title={manifestFilePath}>
+            {manifestFilePath}
+          </Tooltip>
+        ),
         //  key: "manifestFilePath"
       },
       {
         title: "清单文件名",
         dataIndex: "manifestFileName",
         editable: true,
+        width: '10%',
+        ellipsis: true,
+        render: manifestFileName => (
+          <Tooltip placement="topLeft" title={manifestFileName}>
+            {manifestFileName}
+          </Tooltip>
+        ),
       },
       {
         title: "清单文件大小",
         //   key: "manifestFileSize",
         dataIndex: "manifestFileSize",
         editable: true,
+        width: '5%',
+        ellipsis: true,
       },
       {
         title: '上传时间',
@@ -158,6 +233,8 @@ class MapVersionTable extends React.Component {
         sorter: true,
         valueType: 'dateTime',
         hideInForm: true,
+        width: '10%',
+        ellipsis: true,
         // renderText: (val: string) => `${val} 万`,
       },
       {
@@ -166,6 +243,8 @@ class MapVersionTable extends React.Component {
         sorter: true,
         valueType: 'dateTime',
         hideInForm: true,
+        width: '10%',
+        ellipsis: true,
       },
       {
         title: "状态",
@@ -177,61 +256,132 @@ class MapVersionTable extends React.Component {
           1: {text: '灰度发布中', status: 'GrayRelease'},
           0: {text: '已上线', status: 'Success'},
         },
+        width: '10%',
+        ellipsis: true,
       },
 
       {
-        title: "操作",
+        title: '操作',
         dataIndex: 'operation',
-        render: (text, record) => (
-          <>
-
-              const editable = isEditing(record);
-              return editable ? (
-              <span>
-              <a
-                href="javascript:;"
-                onClick={() => save(record.key)}
-                style={{
-                marginRight: 8,
-                }}
+        render: (text, record) => {
+          const {editingKey} = this.state;
+          const editable = this.isEditing(record);
+          return editable ? (
+            <span>
+              <EditableContext.Consumer>
+                  {() => (
+                    <button
+                      onClick={() => this.handleSave(record)}
+                      style={{marginRight: 8}}
+                      type="button"
+                    >
+                      保存
+                    </button>
+                  )}
+              </EditableContext.Consumer>
+              <Popconfirm
+                title="Sure to cancel?"
+                onConfirm={() => this.cancel(record.key)}
               >
-                保存
-              </a>
-              <Popconfirm title="Sure to cancel?" onConfirm={cancel}>
-              <a>取消</a>
+                  <button style={{marginRight: 8}} type="button">
+                      取消
+                  </button>
               </Popconfirm>
-              </span>
-              ) : (
-              <a disabled={editingKey !== ''} onClick={() => edit(record)}>
-              编辑
-              </a>
-              );
+              <Popconfirm
+                title="Sure to delete?"
+                onConfirm={() => this.delete(record.mapVersionId)}
+              >
+                  <button type="button">删除</button>
+              </Popconfirm>
+            </span>
+          ) : (
+            <>
+              <Divider type="vertical"/>
+              {
+                <a disabled={editingKey !== ''}
+                   onClick={() => this.edit(record.mapVersionId)}
+                >
+                  编辑
+                </a>
+              }
 
-            <Divider type="vertical"/>
-            {
-              this.state.dataSource.length >= 1 ? (
-                <Popconfirm title="Sure to delete?" onConfirm={() => this.handleDelete(record.mapVersionId)}>
-                  <a>删除</a>
-                </Popconfirm>
-              ) : null
-            }
+            <Divider type = "vertical" />
+            <a href = "" > 发布 </a>
 
-            <Divider type="vertical"/>
-            <a href="">发布</a>
+            <Divider type = "vertical" / >
+            <a href = "" > 下线 </a>
+           </>
+        );
+       },
+      },
 
-            <Divider type="vertical"/>
-            <a href="">下线</a>
-          </>
-        )
-      }
+      // {
+      //   title: "操作",
+      //   dataIndex: 'operation',
+      //   render: (text, record) => (
+      //     <>
+      //       <Divider type="vertical"/>
+      //       {
+      //         const { editingKey } = this.state;
+      //         const editable = this.isEditing(record);
+      //         return editable ? (
+      //         <span>
+      //         <EditableContext.Consumer>
+      //         {(form) => (
+      //           <button
+      //             onClick={() => this.save(form, record.key)}
+      //             style={{ marginRight: 8 }}
+      //             type="button"
+      //           >
+      //             Save
+      //           </button>
+      //         )}
+      //         </EditableContext.Consumer>
+      //         <Popconfirm
+      //         title="Sure to cancel?"
+      //         onConfirm={() => this.cancel(record.key)}
+      //         >
+      //         <button style={{ marginRight: 8 }} type="button">
+      //         Cancel
+      //         </button>
+      //         </Popconfirm>
+      //         <Popconfirm
+      //         title="Sure to delete?"
+      //         onConfirm={() => this.delete(record.key)}
+      //         >
+      //         <button type="button">delete</button>
+      //         </Popconfirm>
+      //         </span>
+      //         ) : (
+      //         <button
+      //         type="button"
+      //         disabled={editingKey !== ''}
+      //         onClick={() => this.edit(record.key)}
+      //         >
+      //         Edit
+      //         </button>
+      //         );
+      //       },
+      //
+      //
+      //       <Divider type="vertical"/>
+      //       {
+      //         this.state.dataSource.length >= 1 ? (
+      //           <Popconfirm title="Sure to delete?" onConfirm={() => this.handleDelete(record.mapVersionId)}>
+      //             <a>删除</a>
+      //           </Popconfirm>
+      //         ) : null
+      //       }
+      //
+      //       <Divider type="vertical"/>
+      //       <a href="">发布</a>
+      //
+      //       <Divider type="vertical"/>
+      //       <a href="">下线</a>
+      //     </>
+      //   )
+      // }
     ];
-
-    this.state = {
-      dataSource: [],
-      pagination: {},
-      loading: false,
-      count: 0
-    };
   }
 
 
@@ -239,23 +389,89 @@ class MapVersionTable extends React.Component {
     this.fetch();
   }
 
-  handleDelete = key => {
-    console.log("handleDelete, key:", key);
+  isEditing = (record) => {
+    const { editingKey } = this.state;
+    return record.mapVersionId === editingKey;
+  };
+  cancel = (key) => {
+  //  // if (key.length > 6) {
+  //   const dataSource = [...this.state.dataSource];
+  //     const newData = dataSource;
+  //     newData.splice(dataSource.length - 1, 1);
+  //     this.setState({ dataSource: newData, editingKey: key });
+  // //  }
+    this.setState({ editingKey: '' });
+  };
+
+  delete = (key) => {
     const dataSource = [...this.state.dataSource];
-    this.setState({ dataSource: dataSource.filter(item => item.mapVersionId !== key) });
+    const newData = dataSource;
+    const index = newData.findIndex((item) => key === item.mapVersionId);
+    newData.splice(index, 1);
+    this.setState({ dataSource: newData, editingKey: '' });
+  };
+  // save(form, key) {
+  //   form.validateFields((error, row) => {
+  //     if (error) {
+  //       return;
+  //     }
+  //     const { dataSource } = this.state;
+  //     const newData = [...dataSource];
+  //     const index = newData.findIndex((item) => key === item.mapVerionId);
+  //     if (index > -1) {
+  //       const item = newData[index];
+  //       newData.splice(index, 1, {
+  //         ...item,
+  //         ...row,
+  //       });
+  //       this.setState({ dataSource: newData, editingKey: '' });
+  //     } else {
+  //       newData.push(row);
+  //       this.setState({ dataSource: newData, editingKey: '' });
+  //     }
+  //   });
+  // }
+
+  // handleDelete = key => {
+  //   console.log("handleDelete, key:", key);
+  //   const dataSource = [...this.state.dataSource];
+  //   this.setState({ dataSource: dataSource.filter(item => item.mapVersionId !== key) });
+  // };
+
+  edit = (key) => {
+    console.log("edit, key:", key);
+    this.setState({ editingKey: key });
   };
 
   handleAdd = () => {
-    const {count, dataSource} = this.state;
-    const newData = {
-
-      mapVersionId: "v1",
-      key: "v1",
-
+    const {count, dataSource, editingKey } = this.state;
+    if (editingKey !== '') {
+      message.error('请先保存');
+      return;
+    }
+    const key = "v1";
+    const time = new Date().toString();
+    const newRecord = {
+      mapVersionId: 'v1',
+      mapFilePath: '',
+      mapFileName: '',
+      mapFileSize: 0,
+      manifestFilePath: '',
+      manifestFileName: '',
+      manifestFileSize: 0,
+      createdAt: time,
+      updateAt: time,
     };
+    // const newData = {
+    //
+    //   mapVersionId: "v1",
+    //   key,
+    //
+    // };
     this.setState({
-      dataSource: [...dataSource, newData],
+      dataSource: [...dataSource, newRecord],
       count: count + 1,
+      editingKey: key,
     });
   };
   handleSave = row => {
@@ -266,7 +482,10 @@ class MapVersionTable extends React.Component {
       ...item,
       ...row,
     });
-    this.setState({ dataSource: newData });
+    this.setState({
+      dataSource: newData,
+      editingKey: '',
+    });
   };
 
   handleTableChange = (pagination, filters, sorter) => {
@@ -311,16 +530,31 @@ class MapVersionTable extends React.Component {
     });
   };
 
+  handleResize = index => (e, { size }) => {
+    this.setState(({ columns }) => {
+      const nextColumns = [...columns];
+      nextColumns[index] = {
+        ...nextColumns[index],
+        width: size.width,
+      };
+      return { columns: nextColumns };
+    });
+  };
+
+
   render() {
     const { dataSource } = this.state;
     const { loading } = this.state;
     const components = {
+      header: {
+        cell: ResizableTitle,
+      },
       body: {
         row: EditableRow,
         cell: EditableCell,
       },
     };
-    const columns = this.columns.map(col => {
+    const columns = this.columns.map((col, index) => {
       if (!col.editable) {
         return col;
       }
@@ -332,6 +566,10 @@ class MapVersionTable extends React.Component {
           dataIndex: col.dataIndex,
           title: col.title,
           handleSave: this.handleSave,
+        }),
+        onHeaderCell: column => ({
+          width: column.width,
+          onResize: this.handleResize(index),
         }),
       };
     });
